@@ -1,149 +1,254 @@
-#include <WiFi.h>
-#include <WiFiClient.h>
-#include <WebServer.h>
-#include <LEAmDNS.h>
+// @file WebServer.ino
+// @brief Example implementation using the ESP8266 WebServer.
+//
+// See also README.md for instructions and hints.
+//
+// Changelog:
+// 21.07.2021 creation, first version
 
 #ifndef STASSID
-#define STASSID "your-ssid"
-#define STAPSK "your-password"
+#define STASSID "BOTAndroid"
+#define STAPSK "alexalex"
 #endif
 
-const char* ssid = STASSID;
-const char* password = STAPSK;
+const char *ssid = STASSID;
+const char *passPhrase = STAPSK;
 
-WebServer server(80);
 
-const int led = LED_BUILTIN;
+#include <Arduino.h>
+#include <ESP8266WebServer.h>
 
-void handleRoot() {
-  digitalWrite(led, 1);
-  server.send(200, "text/plain", "hello from pico w!\r\n");
-  digitalWrite(led, 0);
-}
+#include <FS.h>        // File System for Web Server Files
+#include <LittleFS.h>  // This file system is used.
 
-void handleNotFound() {
-  digitalWrite(led, 1);
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-  for (uint8_t i = 0; i < server.args(); i++) {
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+// mark parameters not used in example
+#define UNUSED __attribute__((unused))
+
+// TRACE output simplified, can be deactivated here
+#define TRACE(...) Serial.printf(__VA_ARGS__)
+
+// name of the server. You reach it using http://webserver
+#define HOSTNAME "webserver"
+
+// local time zone definition (Berlin)
+#define TIMEZONE "CET-1CEST,M3.5.0,M10.5.0/3"
+
+// need a WebServer for http access on port 80.
+ESP8266WebServer server(80);
+
+// The text of builtin files are in this header file
+#include "builtinfiles.h"
+
+
+// ===== Simple functions used to answer simple GET requests =====
+
+// This function is called when the WebServer was requested without giving a filename.
+// This will redirect to the file index.htm when it is existing otherwise to the built-in $upload.htm page
+void handleRedirect() {
+  TRACE("Redirect...");
+  String url = "/index.htm";
+
+  if (!LittleFS.exists(url)) { url = "/$update.htm"; }
+
+  server.sendHeader("Location", url, true);
+  server.send(302);
+}  // handleRedirect()
+
+
+// This function is called when the WebServer was requested to list all existing files in the filesystem.
+// a JSON array with file information is returned.
+void handleListFiles() {
+  Dir dir = LittleFS.openDir("/");
+  String result;
+
+  result += "[\n";
+  while (dir.next()) {
+    if (result.length() > 4) { result += ","; }
+    result += "  {";
+    result += " \"name\": \"" + dir.fileName() + "\", ";
+    result += " \"size\": " + String(dir.fileSize()) + ", ";
+    result += " \"time\": " + String(dir.fileTime());
+    result += " }\n";
+    // jc.addProperty("size", dir.fileSize());
+  }  // while
+  result += "]";
+  server.sendHeader("Cache-Control", "no-cache");
+  server.send(200, "text/javascript; charset=utf-8", result);
+}  // handleListFiles()
+
+
+// This function is called when the sysInfo service was requested.
+void handleSysInfo() {
+  String result;
+
+  FSInfo fs_info;
+  LittleFS.info(fs_info);
+
+  result += "{\n";
+  result += "  \"flashSize\": " + String(ESP.getFlashChipSize()) + ",\n";
+  result += "  \"freeHeap\": " + String(ESP.getFreeHeap()) + ",\n";
+  result += "  \"fsTotalBytes\": " + String(fs_info.totalBytes) + ",\n";
+  result += "  \"fsUsedBytes\": " + String(fs_info.usedBytes) + ",\n";
+  result += "}";
+
+  server.sendHeader("Cache-Control", "no-cache");
+  server.send(200, "text/javascript; charset=utf-8", result);
+}  // handleSysInfo()
+
+
+// ===== Request Handler class used to answer more complex requests =====
+
+// The FileServerHandler is registered to the web server to support DELETE and UPLOAD of files into the filesystem.
+class FileServerHandler : public RequestHandler {
+public:
+  // @brief Construct a new File Server Handler object
+  // @param fs The file system to be used.
+  // @param path Path to the root folder in the file system that is used for serving static data down and upload.
+  // @param cache_header Cache Header to be used in replies.
+  FileServerHandler() {
+    TRACE("FileServerHandler is registered\n");
   }
-  server.send(404, "text/plain", message);
-  digitalWrite(led, 0);
-}
 
+
+  // @brief check incoming request. Can handle POST for uploads and DELETE.
+  // @param requestMethod method of the http request line.
+  // @param requestUri request ressource from the http request line.
+  // @return true when method can be handled.
+  bool canHandle(HTTPMethod requestMethod, const String UNUSED &_uri) override {
+    return ((requestMethod == HTTP_POST) || (requestMethod == HTTP_DELETE));
+  }  // canHandle()
+
+
+  bool canUpload(const String &uri) override {
+    // only allow upload on root fs level.
+    return (uri == "/");
+  }  // canUpload()
+
+
+  bool handle(ESP8266WebServer &server, HTTPMethod requestMethod, const String &requestUri) override {
+    // ensure that filename starts with '/'
+    String fName = requestUri;
+    if (!fName.startsWith("/")) { fName = "/" + fName; }
+
+    if (requestMethod == HTTP_POST) {
+      // all done in upload. no other forms.
+
+    } else if (requestMethod == HTTP_DELETE) {
+      if (LittleFS.exists(fName)) { LittleFS.remove(fName); }
+    }  // if
+
+    server.send(200);  // all done.
+    return (true);
+  }  // handle()
+
+
+  // uploading process
+  void upload(ESP8266WebServer UNUSED &server, const String UNUSED &_requestUri, HTTPUpload &upload) override {
+    // ensure that filename starts with '/'
+    String fName = upload.filename;
+    if (!fName.startsWith("/")) { fName = "/" + fName; }
+
+    if (upload.status == UPLOAD_FILE_START) {
+      // Open the file
+      if (LittleFS.exists(fName)) { LittleFS.remove(fName); }  // if
+      _fsUploadFile = LittleFS.open(fName, "w");
+
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+      // Write received bytes
+      if (_fsUploadFile) { _fsUploadFile.write(upload.buf, upload.currentSize); }
+
+    } else if (upload.status == UPLOAD_FILE_END) {
+      // Close the file
+      if (_fsUploadFile) { _fsUploadFile.close(); }
+    }  // if
+  }    // upload()
+
+protected:
+  File _fsUploadFile;
+};
+
+
+// Setup everything to make the webserver work.
 void setup(void) {
-  pinMode(led, OUTPUT);
-  digitalWrite(led, 0);
-  Serial.begin(115200);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  Serial.println("");
+  delay(3000);  // wait for serial monitor to start completely.
 
-  // Wait for connection
+  // Use Serial port for some trace information from the example
+  Serial.begin(115200);
+  Serial.setDebugOutput(false);
+
+  TRACE("Starting WebServer example...\n");
+
+  TRACE("Mounting the filesystem...\n");
+  if (!LittleFS.begin()) {
+    TRACE("could not mount the filesystem...\n");
+    delay(2000);
+    ESP.restart();
+  }
+
+  // start WiFI
+  WiFi.mode(WIFI_STA);
+  if (strlen(ssid) == 0) {
+    WiFi.begin();
+  } else {
+    WiFi.begin(ssid, passPhrase);
+  }
+
+  // allow to address the device by the given name e.g. http://webserver
+  WiFi.setHostname(HOSTNAME);
+
+  TRACE("Connect to WiFi...\n");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    Serial.print(".");
+    TRACE(".");
   }
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  TRACE("connected.\n");
 
-  if (MDNS.begin("picow")) {
-    Serial.println("MDNS responder started");
-  }
+  // Ask for the current time using NTP request builtin into ESP firmware.
+  TRACE("Setup ntp...\n");
+  configTime(TIMEZONE, "pool.ntp.org");
 
-  server.on("/", handleRoot);
+  TRACE("Register service handlers...\n");
 
-  server.on("/inline", []() {
-    server.send(200, "text/plain", "this works as well");
+  // serve a built-in htm page
+  server.on("/$upload.htm", []() {
+    server.send(200, "text/html", FPSTR(uploadContent));
   });
 
-  server.on("/gif", []() {
-    static const uint8_t gif[] = {
-      0x47, 0x49, 0x46, 0x38, 0x37, 0x61, 0x10, 0x00, 0x10, 0x00, 0x80, 0x01,
-      0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x2c, 0x00, 0x00, 0x00, 0x00,
-      0x10, 0x00, 0x10, 0x00, 0x00, 0x02, 0x19, 0x8c, 0x8f, 0xa9, 0xcb, 0x9d,
-      0x00, 0x5f, 0x74, 0xb4, 0x56, 0xb0, 0xb0, 0xd2, 0xf2, 0x35, 0x1e, 0x4c,
-      0x0c, 0x24, 0x5a, 0xe6, 0x89, 0xa6, 0x4d, 0x01, 0x00, 0x3b
-    };
-    char gif_colored[sizeof(gif)];
-    memcpy_P(gif_colored, gif, sizeof(gif));
-    // Set the background to a random set of colors
-    gif_colored[16] = millis() % 256;
-    gif_colored[17] = millis() % 256;
-    gif_colored[18] = millis() % 256;
-    server.send(200, "image/gif", gif_colored, sizeof(gif_colored));
+  // register a redirect handler when only domain name is given.
+  server.on("/", HTTP_GET, handleRedirect);
+
+  // register some REST services
+  server.on("/$list", HTTP_GET, handleListFiles);
+  server.on("/$sysinfo", HTTP_GET, handleSysInfo);
+
+  // UPLOAD and DELETE of files in the file system using a request handler.
+  server.addHandler(new FileServerHandler());
+
+  // enable CORS header in webserver results
+  server.enableCORS(true);
+
+  // enable ETAG header in webserver results from serveStatic handler
+  server.enableETag(true);
+
+  // serve all static files
+  server.serveStatic("/", LittleFS, "/");
+
+  // handle cases when file is not found
+  server.onNotFound([]() {
+    // standard not found in browser.
+    server.send(404, "text/html", FPSTR(notFoundContent));
   });
-
-  server.onNotFound(handleNotFound);
-
-  /////////////////////////////////////////////////////////
-  // Hook examples
-
-  server.addHook([](const String & method, const String & url, WiFiClient * client, WebServer::ContentTypeFunction contentType) {
-    (void)method;       // GET, PUT, ...
-    (void)url;          // example: /root/myfile.html
-    (void)client;       // the webserver tcp client connection
-    (void)contentType;  // contentType(".html") => "text/html"
-    Serial.printf("A useless web hook has passed\n");
-    return WebServer::CLIENT_REQUEST_CAN_CONTINUE;
-  });
-
-  server.addHook([](const String&, const String & url, WiFiClient*, WebServer::ContentTypeFunction) {
-    if (url.startsWith("/fail")) {
-      Serial.printf("An always failing web hook has been triggered\n");
-      return WebServer::CLIENT_MUST_STOP;
-    }
-    return WebServer::CLIENT_REQUEST_CAN_CONTINUE;
-  });
-
-  server.addHook([](const String&, const String & url, WiFiClient * client, WebServer::ContentTypeFunction) {
-    if (url.startsWith("/dump")) {
-      Serial.printf("The dumper web hook is on the run\n");
-
-      // Here the request is not interpreted, so we cannot for sure
-      // swallow the exact amount matching the full request+content,
-      // hence the tcp connection cannot be handled anymore by the
-      auto last = millis();
-      while ((millis() - last) < 500) {
-        char buf[32];
-        size_t len = client->read((uint8_t*)buf, sizeof(buf));
-        if (len > 0) {
-          Serial.printf("(<%d> chars)", (int)len);
-          Serial.write(buf, len);
-          last = millis();
-        }
-      }
-      // Two choices: return MUST STOP and webserver will close it
-      //                       (we already have the example with '/fail' hook)
-      // or                  IS GIVEN and webserver will forget it
-      // trying with IS GIVEN and storing it on a dumb WiFiClient.
-      // check the client connection: it should not immediately be closed
-      // (make another '/dump' one to close the first)
-      Serial.printf("\nTelling server to forget this connection\n");
-      static WiFiClient forgetme = *client;  // stop previous one if present and transfer client refcounter
-      return WebServer::CLIENT_IS_GIVEN;
-    }
-    return WebServer::CLIENT_REQUEST_CAN_CONTINUE;
-  });
-
-  // Hook examples
-  /////////////////////////////////////////////////////////
 
   server.begin();
-  Serial.println("HTTP server started");
-}
+  TRACE("hostname=%s\n", WiFi.getHostname());
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}  // setup
 
+
+// run the server...
 void loop(void) {
   server.handleClient();
-  MDNS.update();
-}
+}  // loop()
+
+// end.
