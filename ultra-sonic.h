@@ -1,4 +1,5 @@
-using namespace std;
+#include <Arduino.h>
+#include <algorithm>
 
 class UltraSonic {
   public:
@@ -22,7 +23,7 @@ class UltraSonic {
       duration = pulseIn(echoPin, HIGH);  
       distance = (duration*.0343)/2;  
 
-      distancePrecent = std::min((distance-minDistance)/emptyDistance*100, 100.00f);
+      distancePrecent = std::min((distance - minDistance) / emptyDistance * 100, 100.00f);
 
       //Serial.print("Distance: ");
       //Serial.print();
