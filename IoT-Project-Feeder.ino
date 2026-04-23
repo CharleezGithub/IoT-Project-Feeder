@@ -9,7 +9,7 @@ StepperMotor feeder(0, 50, 5, 4);
 void setup() {
     Serial.begin(9600);
     feeder.setup();
-    //ultraSonic.setup();
+    ultraSonic.setup();
 
 }
 
@@ -19,6 +19,8 @@ void loop() {
   if (buttonPressed == LOW) {
     feeder.feed();
   }
-  //ultraSonic.loop();
+  ultraSonic.loop();
   //waterMonitor.loop();
+
+  Serial.println(ultraSonic.distancePrecent);
 }

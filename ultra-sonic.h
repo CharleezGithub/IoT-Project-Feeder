@@ -1,9 +1,12 @@
+using namespace std;
+
 class UltraSonic {
-  private:
+  public:
     const int trigPin = 2;  
     const int echoPin = 4; 
-    float duration, distance;  
-  public:
+    const float emptyDistance = 15.00f;
+    const float minDistance = 4.50f;
+    float duration, distance, distancePrecent;
     void setup() {
       pinMode(trigPin, OUTPUT);  
       pinMode(echoPin, INPUT);  
@@ -19,10 +22,13 @@ class UltraSonic {
       duration = pulseIn(echoPin, HIGH);  
       distance = (duration*.0343)/2;  
 
+      distancePrecent = std::min((distance-minDistance)/emptyDistance*100, 100.00f);
 
-      Serial.print("Distance: ");  
-      Serial.println(distance);  
-      delay(100);  
+      //Serial.print("Distance: ");
+      //Serial.print();
+      //Serial.println("%");
+      //Serial.println(distance);
+      delay(100);
     }
 };
 
