@@ -6,7 +6,7 @@ class UltraSonic {
     const int trigPin = 2;  
     const int echoPin = 4; 
     const float emptyDistance = 15.00f;
-    const float minDistance = 4.50f;
+    const float minDistance = 2.80f;
     float duration, distance, distancePrecent;
     void setup() {
       pinMode(trigPin, OUTPUT);  
@@ -23,7 +23,7 @@ class UltraSonic {
       duration = pulseIn(echoPin, HIGH);  
       distance = (duration*.0343)/2;  
 
-      distancePrecent = std::min((distance - minDistance) / emptyDistance * 100, 100.00f);
+      distancePrecent = 100 - std::max(std::min((distance - minDistance) / emptyDistance * 100, 100.00f), 0.0f);
 
       //Serial.print("Distance: ");
       //Serial.print();
