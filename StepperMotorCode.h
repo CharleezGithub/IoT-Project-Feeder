@@ -15,8 +15,8 @@ class StepperMotor {
   StepperMotor(int weight, int max_weight, int dir_pin, int step_pin) {
     foodWeight = weight;
     foodWeightGoal = max_weight;
-    DIR_PIN = dir_pin;   // GPIO5
-    STEP_PIN = step_pin;   // GPIO4
+    DIR_PIN = dir_pin;
+    STEP_PIN = step_pin;
   }
 
     bool catFed = false;
@@ -29,38 +29,40 @@ class StepperMotor {
 
     // Set motion parameters
     stepper.setStepsPerRevolution(1600);
-    stepper.setSpeedInStepsPerSecond(3200);
-    stepper.setAccelerationInStepsPerSecondPerSecond(4000);
+    stepper.setSpeedInStepsPerSecond(10000);
+    stepper.setAccelerationInStepsPerSecondPerSecond(10000);
 
     Serial.println("Stepper ready");
 
-    pinMode(12, INPUT_PULLUP);
+    pinMode(13, INPUT_PULLUP);
   }
 
   void feed() {
     Serial.println("Feeding started");
 
-    while (foodWeight <= foodWeightGoal) {
-      if (foodWeight % 10 == 0) {
-        Serial.print(foodWeight);
-        Serial.println(" g has been given");
-      }
-      stepper.moveRelativeInSteps(-50);
-      foodWeight++;
-      delay(5);
-    }
-    catFed = true;
-    Serial.print("The cat's hunger has been satisfied... for now.");
-    foodWeight = 0;
+    // while (foodWeight <= foodWeightGoal) {
+    //   if (foodWeight % 10 == 0) {
+    //     Serial.print(foodWeight);
+    //     Serial.println(" g has been given");
+    //   }
+    //   stepper.moveRelativeInSteps(50);
+    //   foodWeight++;
+    //   delay(1);
+    
+    // catFed = true;
+    // Serial.print("The cat's hunger has been satisfied... for now.");
+    // foodWeight = 0;
+    stepper.moveRelativeInRevolutions(1);
+    Serial.println("Feeding finished");
   }
 
   void loop() {
     int buttonPressed = digitalRead(12);
     // Serial.println(buttonPressed);
 
-    if (not catFed) {
-      Serial.println("Hungry cat");
-    }
+    // if (not catFed) {
+    //   Serial.println("Hungry cat");
+    // }
 
     if (buttonPressed == LOW) {
       feed();

@@ -4,7 +4,7 @@
 #include "StepperMotorCode.h"
 
 
-StepperMotor feeder(0, 50, 5, 4);
+StepperMotor feeder(0, 50, 12, 15);
 
 void setup() {
     Serial.begin(9600);
@@ -14,13 +14,13 @@ void setup() {
 }
 
 void loop() {
-  int buttonPressed = digitalRead(12);
+  int buttonPressed = digitalRead(13);
 
   if (buttonPressed == LOW) {
     feeder.feed();
   }
   ultraSonic.loop();
-  //waterMonitor.loop();
+  // waterMonitor.loop();
 
   Serial.println(ultraSonic.distancePrecent);
 }
