@@ -1,36 +1,60 @@
 #include <Arduino.h>
-#include <algorithm>
+#include <LiquidCrystal_I2C.h>
 
-class UltraSonic {
-  public:
-    const int trigPin = 2;  
-    const int echoPin = 14; 
-    const float emptyDistance = 15.00f;
-    const float minDistance = 2.80f;
-    float duration, distance, distancePrecent;
-    void setup() {
-      pinMode(trigPin, OUTPUT);  
-      pinMode(echoPin, INPUT);  
-    }
 
-    void loop() {  
-      digitalWrite(trigPin, LOW);  
-      delayMicroseconds(2);  
-      digitalWrite(trigPin, HIGH);  
-      delayMicroseconds(10);  
-      digitalWrite(trigPin, LOW);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-      duration = pulseIn(echoPin, HIGH);  
-      distance = (duration*.0343)/2;  
+void setup() {
+  Serial.begin(9600);
+ 
+  ledcSetup(0, 2000, 8);
+  ledcAttachPin(buzzer, 0);
 
-      distancePrecent = 100 - std::max(std::min((distance - minDistance) / emptyDistance * 100, 100.00f), 0.0f);
+  lcd.init();
+  lcd.backlight();
+}
 
-      //Serial.print("Distance: ");
-      //Serial.print();
-      //Serial.println("%");
-      //Serial.println(distance);
-      delay(100);
-    }
-};
+void loop() {
+  gameSystem();
+}
 
-UltraSonic ultraSonic;
+void gameSystem(){
+    while (gameSelector == 0){
+        int potValue = analogRead(potentiometer);
+        int startButtonstate = digitalRead(startButton);
+        
+        if (potValue < 1365) {
+            lcd.setCursor(0, 0);
+            lcd.print("Select Gamemode           ");
+            
+            lcd.setCursor(0, 1); 
+            lcd.print("Classic                              ");  
+            
+        } else if (potValue < 2730) {
+            lcd.setCursor(0, 0);
+            lcd.print("Select Gamemode           ");
+            
+            lcd.setCursor(0, 1); 
+            lcd.print("PVP            ");  
+            
+        } else  {
+            lcd.setCursor(0, 0);
+            lcd.print("Select Gamemode               ");
+            
+            lcd.setCursor(0, 1); 
+            lcd.print("TEAM                    "); 
+        }
+
+        if(potValue<1365 && startButtonstate == LOW){
+            gameSelector = 1;
+            gamemode = 1;
+            finished = false;
+        } else if(potValue<2730 && startButtonstate == LOW){
+            gameSelector = 2;
+            gamemode = 2;
+            finished = false;
+        } else if(startButtonstate == LOW){
+            gameSelector = 3;
+            gamemode = 3;
+            finished = false;
+        }

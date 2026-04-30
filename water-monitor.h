@@ -5,13 +5,16 @@ private:
     float duration, distance;
 
 public:
+    int outputValue;
+
     void loop()
     {
         int sensorValue = analogRead(sensorPin);
         if (sensorValue > 0)
         // Serial.println(sensorValue);
         {
-            int outputValue = map(sensorValue, 0, 650, 0, 255);
+            outputValue = map(sensorValue, 0, 650, 0, 255);
+            Serial.print("Humidity: ");
             Serial.println(outputValue);
         }
     }
