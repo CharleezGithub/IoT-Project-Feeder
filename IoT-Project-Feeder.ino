@@ -2,6 +2,7 @@
 #include "ultra-sonic.h"
 #include "water-monitor.h"
 #include "StepperMotorCode.h"
+#include "lcd-display.h"
 
 
 StepperMotor feeder(0, 50, 12, 15);
@@ -10,14 +11,17 @@ void setup() {
     Serial.begin(9600);
     feeder.setup();
     ultraSonic.setup();
+    lcdDisplay.setup();
     pinMode(16, OUTPUT);
 
-    digitalWrite(16, LOW);
+    digitalWrite(16, HIGH);
 }
 
 void loop() {
 
   int buttonPressed = digitalRead(13);
+  int moisture = waterMonitor.outputValue;
+  float foodPercent = ultraSonic.distancePrecent;
 
   if (buttonPressed == LOW) {
     feeder.feed();
@@ -25,11 +29,12 @@ void loop() {
   ultraSonic.loop();
   waterMonitor.loop();
 
-
   Serial.print("Percent Full: ");
-  Serial.println(ultraSonic.distancePrecent);
+  Serial.println(foodPercent);
 
-  if (waterMonitor.outputValue < 50) {
+  lcdDisplay.printMoisture(moisture, foodPercent);
+  
+  if (moisture > 50) {
     digitalWrite(16, HIGH);
   }
   else {

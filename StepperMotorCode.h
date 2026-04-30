@@ -58,22 +58,11 @@ class StepperMotor {
 
   void loop() {
     int buttonPressed = digitalRead(12);
-    // Serial.println(buttonPressed);
-
-    // if (not catFed) {
-    //   Serial.println("Hungry cat");
-    // }
 
     if (buttonPressed == LOW) {
       feed();
     }
 
     delay(50);
-    // Move 1 revolution forward
-    // stepper.moveRelativeInSteps(800);
-
-    // Move 1 revolution backward
-    // stepper.moveRelativeInSteps(-800);
-    // delay(1000);
   }
 };
