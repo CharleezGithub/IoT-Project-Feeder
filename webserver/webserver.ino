@@ -184,9 +184,10 @@ void setup() {
   Serial.begin(115200);
 
   // baud, config, RX, TX
-  mySerial.begin(9n600, SERIAL_8N1, 20, 21);
+  mySerial.begin(9600, SERIAL_8N1, 20, 21);
   Serial.println("UART sender ready");
 
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   Serial.print("Connecting");
 
@@ -215,22 +216,26 @@ void setup() {
 void loop() {
   server.handleClient();
 
+  // 1. Send commands TO the ESP8266
   String currentTime = rtc.getTime("%H:%M:%S");
-
-  // Send value3 and time over UART
   mySerial.print("TIME:");
   mySerial.print(currentTime);
-  mySerial.print(",FOOD:");
+  mySerial.print(",SETFOOD:"); // Renamed for clarity
   mySerial.println(value3);
 
-  Serial.print("Sent: ");
-  Serial.print(currentTime);
-  Serial.print(" | ");
-  Serial.println(value3);
+  // 2. Read sensor data FROM the ESP8266
+  if (mySerial.available()) {
+    String incoming = mySerial.readStringUntil('\n');
+    
+    // Simple parsing: expecting "W:45.5,F:80"
+    int wIndex = incoming.indexOf("W:");
+    int fIndex = incoming.indexOf(",F:");
+    
+    if (wIndex != -1 && fIndex != -1) {
+      value1 = incoming.substring(wIndex + 2, fIndex).toFloat(); // Water
+      value2 = incoming.substring(fIndex + 3).toFloat();          // Food
+    }
+  }
 
-  // Update example values
-  value1 += 0.1;
-  value2 = analogRead(2); // adjust pin if needed
-
-  delay(1000);
+  delay(1000); // Sync once per second
 }
