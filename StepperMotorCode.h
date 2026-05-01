@@ -29,7 +29,7 @@ class StepperMotor {
 
     // Set motion parameters
     stepper.setStepsPerRevolution(1600);
-    stepper.setSpeedInStepsPerSecond(10000);
+    stepper.setSpeedInStepsPerSecond(1000);
     stepper.setAccelerationInStepsPerSecondPerSecond(10000);
 
     Serial.println("Stepper ready");
@@ -52,7 +52,7 @@ class StepperMotor {
     // catFed = true;
     // Serial.print("The cat's hunger has been satisfied... for now.");
     // foodWeight = 0;
-    stepper.moveRelativeInRevolutions(1);
+    stepper.moveRelativeInRevolutions(-0.5);
     Serial.println("Feeding finished");
   }
 

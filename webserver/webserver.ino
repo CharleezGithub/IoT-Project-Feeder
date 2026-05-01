@@ -27,6 +27,7 @@ int value3 = 0;
 HardwareSerial mySerial(1); // UART1
 
 // -------------------------------- ( HTML code ) ----------------------------------
+bool triggerFeed = false;
 String getHTML() {
   String currentTime = rtc.getTime("%H:%M:%S");
 
@@ -112,6 +113,16 @@ String getHTML() {
     .dec:hover {
       background: #c0392b;
     }
+
+    .feed-btn {
+      background: #f39c12;
+      color: white;
+      margin-top: 20px;
+      font-weight: bold;
+    }
+    .feed-btn:hover {
+      background: #e67e22;
+    }
   </style>
   </head>
 
@@ -134,6 +145,14 @@ String getHTML() {
       <form action="/dec">
         <button class="dec">-100</button>
       </form>
+
+      <form action="/feed" method="POST">
+        <button class="feed-btn">FEED NOW</button>
+      </form>
+
+      <form action="/inc"><button class="inc">+100</button></form>
+      <div class="highlight">)rawliteral" + String(value3) + R"rawliteral(</div>
+      <form action="/dec"><button class="dec">-100</button></form>
     </div>
   </body>
   </html>
@@ -145,6 +164,12 @@ String getHTML() {
 // ------------------------- ( handlers for html buttons ) -------------------------
 void handleRoot() {
   server.send(200, "text/html", getHTML());
+}
+
+void handleFeed() {
+  triggerFeed = true; // Set the flag
+  server.sendHeader("Location", "/");
+  server.send(303);
 }
 
 void handleInc() {
@@ -207,6 +232,7 @@ void setup() {
   server.on("/", handleRoot);
   server.on("/inc", handleInc);
   server.on("/dec", handleDec);
+  server.on("/feed", HTTP_POST, handleFeed);
 
   server.begin();
   Serial.println("HTTP server started");
@@ -222,6 +248,14 @@ void loop() {
   mySerial.print(currentTime);
   mySerial.print(",SETFOOD:"); // Renamed for clarity
   mySerial.println(value3);
+
+  if (triggerFeed) {
+    mySerial.print(",FEED:1");
+    triggerFeed = false; // Reset flag after sending
+  } else {
+    mySerial.print(",FEED:0");
+  }
+  mySerial.println(); // End line
 
   // 2. Read sensor data FROM the ESP8266
   if (mySerial.available()) {
