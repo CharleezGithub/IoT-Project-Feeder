@@ -1,21 +1,36 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HardwareSerial.h>
+#include <ESP32Time.h>
+#include <time.h>
 
 // -------------------------------- ( Wifi config ) --------------------------------
-const char* ssid     = "AGNET";
-const char* password = "11111111";
+const char* ssid     = "x";
+const char* password = "x";
 
 // ------------------------------- ( Server config ) -------------------------------
 WebServer server(80);
+
+// ------------------------------- ( Time config ) ---------------------------------
+ESP32Time rtc;
+
+// Denmark / Central Europe timezone with daylight saving
+const char* ntpServer = "pool.ntp.org";
+const char* timezone = "CET-1CEST,M3.5.0,M10.5.0/3";
 
 // Values
 float value1 = 0.0;
 float value2 = 0.0;
 int value3 = 0;
 
-// HTML code
+// UART config
+HardwareSerial mySerial(1); // UART1
+
+// -------------------------------- ( HTML code ) ----------------------------------
+bool triggerFeed = false;
 String getHTML() {
+  String currentTime = rtc.getTime("%H:%M:%S");
+
   String html = R"rawliteral(
   <!DOCTYPE html>
   <html>
@@ -56,6 +71,13 @@ String getHTML() {
       font-size: 18px;
     }
 
+    .time {
+      font-size: 22px;
+      font-weight: bold;
+      color: #f1c40f;
+      margin-bottom: 20px;
+    }
+
     .highlight {
       font-size: 26px;
       font-weight: bold;
@@ -92,6 +114,15 @@ String getHTML() {
       background: #c0392b;
     }
 
+    .feed-btn {
+      background: #f39c12;
+      color: white;
+      margin-top: 20px;
+      font-weight: bold;
+    }
+    .feed-btn:hover {
+      background: #e67e22;
+    }
   </style>
   </head>
 
@@ -99,7 +130,9 @@ String getHTML() {
     <div class="card">
       <h1>ESP32-C3 Dashboard</h1>
 
-      <div class="value">Water left: )rawliteral" + String(value1) + R"rawliteral(</div>
+      <div class="time">Time: )rawliteral" + currentTime + R"rawliteral(</div>
+
+      <div class="value">Water left: )rawliteral" + String(value1, 1) + R"rawliteral(</div>
       <div class="value">Food left: )rawliteral" + String(value2) + R"rawliteral(</div>
 
       <form action="/inc">
@@ -112,6 +145,14 @@ String getHTML() {
       <form action="/dec">
         <button class="dec">-100</button>
       </form>
+
+      <form action="/feed" method="POST">
+        <button class="feed-btn">FEED NOW</button>
+      </form>
+
+      <form action="/inc"><button class="inc">+100</button></form>
+      <div class="highlight">)rawliteral" + String(value3) + R"rawliteral(</div>
+      <form action="/dec"><button class="dec">-100</button></form>
     </div>
   </body>
   </html>
@@ -125,6 +166,12 @@ void handleRoot() {
   server.send(200, "text/html", getHTML());
 }
 
+void handleFeed() {
+  triggerFeed = true; // Set the flag
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
 void handleInc() {
   value3 += 100;
   server.sendHeader("Location", "/");
@@ -136,9 +183,28 @@ void handleDec() {
   server.sendHeader("Location", "/");
   server.send(303);
 }
-// UART config 
-HardwareSerial mySerial(1); // UART1
 
+// ----------------------------- ( sync time function ) -----------------------------
+void syncTime() {
+  configTzTime(timezone, ntpServer);
+
+  struct tm timeinfo;
+
+  Serial.print("Syncing time");
+
+  while (!getLocalTime(&timeinfo)) {
+    delay(1000);
+    Serial.print(".");
+  }
+
+  rtc.setTimeStruct(timeinfo);
+
+  Serial.println();
+  Serial.print("Time synced: ");
+  Serial.println(rtc.getTime("%H:%M:%S"));
+}
+
+// ----------------------------------- ( setup ) -----------------------------------
 void setup() {
   Serial.begin(115200);
 
@@ -146,6 +212,7 @@ void setup() {
   mySerial.begin(9600, SERIAL_8N1, 20, 21);
   Serial.println("UART sender ready");
 
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   Serial.print("Connecting");
 
@@ -158,24 +225,51 @@ void setup() {
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
 
+  // Sync internet time
+  syncTime();
+
   // Routes
   server.on("/", handleRoot);
   server.on("/inc", handleInc);
   server.on("/dec", handleDec);
+  server.on("/feed", HTTP_POST, handleFeed);
 
   server.begin();
   Serial.println("HTTP server started");
 }
 
+// ------------------------------------ ( loop ) -----------------------------------
 void loop() {
   server.handleClient();
 
-  mySerial.println(value3);   // send as text with newline
-  Serial.println("Sent: " + String(value3));
+  // 1. Send commands TO the ESP8266
+  String currentTime = rtc.getTime("%H:%M:%S");
+  mySerial.print("TIME:");
+  mySerial.print(currentTime);
+  mySerial.print(",SETFOOD:"); // Renamed for clarity
+  mySerial.println(value3);
 
-  // Update example values
-  value1 += 0.1;
-  value2 = analogRead(2); // adjust pin if needed
+  if (triggerFeed) {
+    mySerial.print(",FEED:1");
+    triggerFeed = false; // Reset flag after sending
+  } else {
+    mySerial.print(",FEED:0");
+  }
+  mySerial.println(); // End line
 
-  delay(100);
+  // 2. Read sensor data FROM the ESP8266
+  if (mySerial.available()) {
+    String incoming = mySerial.readStringUntil('\n');
+    
+    // Simple parsing: expecting "W:45.5,F:80"
+    int wIndex = incoming.indexOf("W:");
+    int fIndex = incoming.indexOf(",F:");
+    
+    if (wIndex != -1 && fIndex != -1) {
+      value1 = incoming.substring(wIndex + 2, fIndex).toFloat(); // Water
+      value2 = incoming.substring(fIndex + 3).toFloat();          // Food
+    }
+  }
+
+  delay(1000); // Sync once per second
 }
