@@ -1,7 +1,7 @@
-class WaterMonitor
+class WaterPump
 {
 private:
-    const int sensorPin = 16;    // SDD1 / GPIO8
+    const int sensorPin = 16;
 
 public:
     void loop()
@@ -16,4 +16,4 @@ public:
     }
 };
 
-WaterMonitor waterMonitor;
+WaterPump waterPump;
